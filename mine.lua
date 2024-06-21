@@ -1,301 +1,192 @@
-local function checkBlocks(block)
-    local function inspect(inspect_fn)
-        local w, i = inspect_fn()
+local ores = {
+    ["minecraft:coal_ore"] = true,
+    ["minecraft:deepslate_coal_ore"] = true,
+    ["minecraft:copper_ore"] = true,
+    ["minecraft:deepslate_copper_ore"] = true,
+    ["minecraft:iron_ore"] = true,
+    ["minecraft:deepslate_iron_ore"] = true,
+    ["minecraft:gold_ore"] = true,
+    ["minecraft:deepslate_gold_ore"] = true,
+    ["minecraft:lapis_ore"] = true,
+    ["minecraft:deepslate_lapis_ore"] = true,
+    ["minecraft:diamond_ore"] = true,
+    ["minecraft:deepslate_diamond_ore"] = true,
+    ["minecraft:emerald_ore"] = true,
+    ["minecraft:deepslate_emerald_ore"] = true,
+}
 
-        if w then
-            if i.name == block then
-                return true
-            end
-        end
+local lane_length = 100
 
+local excavate = require("ore_excavate")
+
+local function load_current_lane()
+    local f, failReason = io.open("mine_status.txt")
+    if not f then
+        print("couldn't open mine_status.txt: ", failReason)
+        return 1
+    end
+
+    local lane = f:read("n")
+
+    f:close()
+
+    if not lane then
+        print("couldn't read number from mine_status.txt")
+        return 1
+    end
+
+    print("continueing from lane: ", math.floor(lane))
+
+    return math.floor(lane)
+end
+
+local skip_lanes = ...
+
+if not skip_lanes then
+    skip_lanes = load_current_lane()
+end
+
+local current_lane = 1 + skip_lanes
+
+local function save_current_lane(lane)
+    local f, failReason = io.open("mine_status.txt", "r")
+    if not f then
+        print("couldn't open mine_status.txt for writing: ", failReason)
         return false
     end
 
-    return function()
-        local front = inspect(turtle.inspect)
-        local up = inspect(turtle.inspectUp)
-        local down = inspect(turtle.inspectDown)
+    local write_result = f:write(lane)
 
-        turtle.turnLeft()
-        local left = inspect(turtle.inspect)
-
-        turtle.turnLeft()
-        local back = inspect(turtle.inspect)
-
-        turtle.turnLeft()
-        local right = inspect(turtle.inspect)
-
-        turtle.turnLeft()
-
-        return {
-            front = front,
-            left = left,
-            back = back,
-            right = right,
-            up = up,
-            down = down
-        }
+    if not write_result then
+        print("couldn't write lane to file")
     end
+
+    f:flush()
+    f:close()
 end
 
-function turtle.turnAround()
+local function turnAround()
     turtle.turnLeft()
     turtle.turnLeft()
 end
 
-local function mineBlock(checkBlocks)
-    local blocks = checkBlocks()
-
-    local detected = false
-
-    for _, v in pairs(blocks) do
-        detected = detected or v
+local function tryMine(inspect_fn)
+    local w, i = inspect_fn()
+    if w then
+        if ores[i.name] then
+            local blockTest_fn = excavate.blockTest(i.name)
+            excavate.mine(blockTest_fn)
+        end
     end
+end
 
-    if not detected then
-        return
-    end
+local function checkCurrent()
+    tryMine(turtle.inspect)
+    tryMine(turtle.inspectDown)
 
-    if blocks.up then
+    turtle.turnLeft()
+    tryMine(turtle.inspect)
+    turnAround()
+    tryMine(turtle.inspect)
+
+    turtle.up()
+    tryMine(turtle.inspect)
+    turtle.turnLeft()
+    tryMine(turtle.inspectUp)
+    tryMine(turtle.inspect)
+
+    turtle.turnLeft()
+    tryMine(turtle.inspect)
+
+    turtle.down()
+    turtle.turnRight()
+end
+
+local function estimateFuelConsumption()
+    local toLaneAndBack = current_lane * 4 * 2
+
+    local lane = math.ceil(lane_length + (lane_length * 3) + (lane_length * 0.5))
+
+    return toLaneAndBack + lane
+end
+
+local function mineLane()
+    turnAround()
+    for i=1,current_lane*4 do
+        turtle.dig()
+        turtle.forward()
         turtle.digUp()
-        local moved = turtle.up()
-
-        if moved then
-            mineBlock(checkBlocks)
-            turtle.down()
-        end
     end
+    turtle.turnLeft()
 
-    if blocks.down then
-        turtle.digDown()
-
-        local moved = turtle.down()
-
-        if moved then
-            mineBlock(checkBlocks)
-
-            turtle.up()
-        end
-    end
-
-    if blocks.front then
+    for i=1,lane_length do
         turtle.dig()
-
-        local moved = turtle.forward()
-
-        if moved then
-            mineBlock(checkBlocks)
-        end
-
-        turtle.turnAround()
-
-        if moved then
-            turtle.forward()
-        end
-
-        turtle.turnAround()
+        turtle.forward()
+        turtle.digUp()
+        checkCurrent()
     end
 
-    if blocks.back then
-        turtle.turnAround()
+    turnAround()
 
-        turtle.dig()
+    while turtle.forward() do end
 
-        local moved = turtle.forward()
+    turtle.turnRight()
 
-        if moved then
-            mineBlock(checkBlocks)
-        end
+    while turtle.forward() do end
 
-        turtle.turnAround()
-
-        if moved then
-            turtle.forward()
-        end
-    end
-
-    if blocks.left then
-        turtle.turnLeft()
-
-        turtle.dig()
-
-        local moved = turtle.forward()
-
-        if moved then
-            mineBlock(checkBlocks)
-        end
-
-        turtle.turnAround()
-
-        if moved then
-            turtle.forward()
-        end
-
-        turtle.turnLeft()
-    end
-
-    if blocks.right then
-        turtle.turnRight()
-
-        turtle.dig()
-
-        local moved = turtle.forward()
-
-        if moved then
-            mineBlock(checkBlocks)
-        end
-
-        turtle.turnAround()
-
-        if moved then
-            turtle.forward()
-        end
-
-        turtle.turnRight()
-    end
+    current_lane = current_lane + 1
+    save_current_lane(current_lane)
 end
 
-local function mineVein(block)
-    local checkBlocks_fn = checkBlocks(block)
+local function needRefuel()
+    return turtle.getFuelLevel() < estimateFuelConsumption()
+end
 
-    mineBlock(checkBlocks_fn)
+-- only run at station
+local function doRefuel()
+    while needRefuel() do
+        if not turtle.suckUp() then
+            return false, "No more fuel"
+        end
+
+        turtle.refuel()
+    end
+    return true
+end
+
+local function rearm()
+    for i=1,16 do
+        turtle.select(i)
+        
+        local isFuel = turtle.refuel(0)
+
+        if isFuel then
+            turtle.dropUp()
+        else
+            turtle.drop()
+        end
+    end
+
+    turtle.select(1)
+
+    return doRefuel()
+end
+
+local function iteration()
+    local success, failReason = rearm()
+
+    if not success then
+        print(failReason)
+        return false
+    end
+
+    mineLane()
 
     return true
 end
 
-local ores = {
-    ["minecraft:coal_ore"] = true,
-    ["minecraft:iron_ore"] = true,
-    ["minecraft:gold_ore"] = true,
-    ["minecraft:copper_ore"] = true,
-    ["minecraft:redstone_ore"] = true,
-    ["minecraft:diamond_ore"] = true,
-    ["minecraft:emerald_ore"] = true,
-    ["minecraft:lapis_ore"] = true
-}
-
-local function mineOres()
-    local _, i = turtle.inspect()
-
-    if ores[i.name] then
-        mineVein(i.name)
-    end
-
-    local _, i = turtle.inspectUp()
-
-    if ores[i.name] then
-        mineVein(i.name)
-    end
-
-    local _, i = turtle.inspectDown()
-
-    if ores[i.name] then
-        mineVein(i.name)
-    end
-
-    turtle.turnRight()
-
-    local _, i = turtle.inspect()
-
-    if ores[i.name] then
-        mineVein(i.name)
-    end
-
-    turtle.turnLeft()
-
-    turtle.turnLeft()
-
-    local _, i = turtle.inspect()
-
-    if ores[i.name] then
-        mineVein(i.name)
-    end
-
-    turtle.turnRight()
-end
-
-local function stripMine(n)
-    for i = 1, n do
-        turtle.dig()
-
-        turtle.forward()
-
-        turtle.digUp()
-
-        mineOres()
-
-        turtle.up()
-
-        mineOres()
-
-        turtle.down()
-    end
-end
-
-local function mineTunnel()
-    turtle.turnLeft()
-
-    stripMine(100)
-
-    turtle.turnAround()
-
-    for i = 1, 100 do
-        turtle.forward()
-    end
-
-    turtle.turnLeft()
-end
-
-local function refuelTurtle()
-    if turtle.getFuelLevel() == "unlimited" then
-        return
-    end
-
-    if turtle.getFuelLevel() >= 2000 then
-        return
-    end
-
-    for i = 1, 16 do
-        turtle.select(i)
-
-        turtle.refuel()
-    end
-
-    turtle.select(1)
-end
-
-local junk = {
-    ["minecraft:cobblestone"] = true,
-    ["minecraft:granite"] = true,
-    ["minecraft:diorite"] = true,
-    ["minecraft:andesite"] = true,
-    ["minecraft:cobbled_deepslate"] = true,
-    ["minecraft:gravel"] = true,
-    ["minecraft:dirt"] = true
-}
-
-local function clearInventory()
-    for i = 1, 16 do
-        local info = turtle.getItemDetail(i)
-
-        if info then
-            if junk[info.name] then
-                turtle.select(i)
-
-                turtle.drop()
-            end
-        end
-    end
-
-    turtle.select(1)
-end
-
 while true do
-    mineTunnel()
-
-    refuelTurtle()
-
-    clearInventory()
-
-    stripMine(4)
+    if not iteration() then
+        sleep(10)
+    end
 end
