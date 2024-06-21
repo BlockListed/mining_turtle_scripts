@@ -30,14 +30,16 @@ local function load_current_lane()
         return 0
     end
 
-    local lane = f:read("n")
+    local raw_lane = f:read("a")
 
     f:close()
 
-    if not lane then
+    if not raw_lane then
         print("couldn't read number from mine_status.txt")
         return 0
     end
+
+    local lane = math.floor(tonumber(raw_lane, 10))
 
     print("continueing from lane: ", math.floor(lane))
 
