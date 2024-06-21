@@ -24,7 +24,7 @@ local excavate = require("ore_excavate")
 -- returns the amount of lanes to skip
 -- aka the previous final lane
 local function load_current_lane()
-    local f, failReason = io.open("mine_status.txt")
+    local f, failReason = io.open("mine_status.txt", "r")
     if not f then
         print("couldn't open mine_status.txt: ", failReason)
         return 0
@@ -55,7 +55,7 @@ end
 local current_lane = 1 + skip_lanes
 
 local function save_current_lane(lane)
-    local f, failReason = io.open("mine_status.txt", "r")
+    local f, failReason = io.open("mine_status.txt", "w")
     if not f then
         print("couldn't open mine_status.txt for writing: ", failReason)
         return false
