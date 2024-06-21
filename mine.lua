@@ -77,7 +77,8 @@ end
 local function tryMine(inspect_fn)
     local w, i = inspect_fn()
     if w then
-        if ores[i.name] then
+        -- mine all forge ores
+        if ores[i.name] or i.tags["forge:ores"] then
             local blockTest_fn = excavate.blockTest(i.name)
             excavate.mine(blockTest_fn)
         end
