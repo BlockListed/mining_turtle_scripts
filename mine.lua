@@ -9,6 +9,8 @@ local ores = {
     ["minecraft:deepslate_gold_ore"] = true,
     ["minecraft:lapis_ore"] = true,
     ["minecraft:deepslate_lapis_ore"] = true,
+    ["minecraft:redstone_ore"] = true,
+    ["minecraft:deepslate_redstone_ore"] = true,
     ["minecraft:diamond_ore"] = true,
     ["minecraft:deepslate_diamond_ore"] = true,
     ["minecraft:emerald_ore"] = true,
@@ -19,11 +21,13 @@ local lane_length = 100
 
 local excavate = require("ore_excavate")
 
+-- returns the amount of lanes to skip
+-- aka the previous final lane
 local function load_current_lane()
     local f, failReason = io.open("mine_status.txt")
     if not f then
         print("couldn't open mine_status.txt: ", failReason)
-        return 1
+        return 0
     end
 
     local lane = f:read("n")
@@ -32,7 +36,7 @@ local function load_current_lane()
 
     if not lane then
         print("couldn't read number from mine_status.txt")
-        return 1
+        return 0
     end
 
     print("continueing from lane: ", math.floor(lane))
